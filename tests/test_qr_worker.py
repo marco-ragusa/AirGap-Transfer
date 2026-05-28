@@ -476,5 +476,80 @@ class TestWorkerFrameHandling(unittest.TestCase):
         worker._finalize_transfer.assert_not_called()
 
 
+class TestScaleRegionToPhysical(unittest.TestCase):
+    """Tests for QRWorker._scale_region_to_physical DPI scaling."""
+
+    @staticmethod
+    def _mock_screen(dpr):
+        screen = MagicMock()
+        screen.devicePixelRatio.return_value = dpr
+        return screen
+
+    @patch("reader.core.qr_worker.QApplication")
+    def test_identity_when_dpr_is_one(self, mock_qapp):
+        """When device pixel ratio is 1.0, coordinates remain unchanged."""
+        mock_qapp.screenAt.return_value = self._mock_screen(1.0)
+        worker = QRWorker({"top": 0, "left": 0, "width": 1, "height": 1})
+        region = {"top": 10, "left": 20, "width": 100, "height": 200}
+        result = worker._scale_region_to_physical(region)
+        self.assertEqual(result, {"top": 10, "left": 20, "width": 100, "height": 200})
+
+    @patch("reader.core.qr_worker.QApplication")
+    def test_doubles_coordinates_when_dpr_is_two(self, mock_qapp):
+        """When device pixel ratio is 2.0, coordinates are doubled."""
+        mock_qapp.screenAt.return_value = self._mock_screen(2.0)
+        worker = QRWorker({"top": 0, "left": 0, "width": 1, "height": 1})
+        region = {"top": 10, "left": 20, "width": 100, "height": 200}
+        result = worker._scale_region_to_physical(region)
+        self.assertEqual(result, {"top": 20, "left": 40, "width": 200, "height": 400})
+
+    @patch("reader.core.qr_worker.QApplication")
+    def test_fractional_dpr_truncates_toward_zero(self, mock_qapp):
+        """Fractional DPR (1.5) truncates the product toward zero via int()."""
+        mock_qapp.screenAt.return_value = self._mock_screen(1.5)
+        worker = QRWorker({"top": 0, "left": 0, "width": 1, "height": 1})
+        region = {"top": 10, "left": 15, "width": 33, "height": 200}
+        result = worker._scale_region_to_physical(region)
+        self.assertEqual(result, {"top": 15, "left": 22, "width": 49, "height": 300})
+
+    @patch("reader.core.qr_worker.QApplication")
+    def test_falls_back_to_primary_screen_when_screen_at_none(self, mock_qapp):
+        """When screenAt returns None, primaryScreen is used as fallback."""
+        mock_qapp.screenAt.return_value = None
+        mock_qapp.primaryScreen.return_value = self._mock_screen(2.0)
+        worker = QRWorker({"top": 0, "left": 0, "width": 1, "height": 1})
+        region = {"top": 5, "left": 5, "width": 10, "height": 10}
+        result = worker._scale_region_to_physical(region)
+        self.assertEqual(result, {"top": 10, "left": 10, "width": 20, "height": 20})
+        mock_qapp.primaryScreen.assert_called()
+
+    @patch("reader.core.qr_worker.QApplication")
+    def test_uses_screen_returned_by_screen_at_on_multimonitor(self, mock_qapp):
+        """screenAt screen is used on multi-monitor; primaryScreen is not called."""
+        mock_qapp.screenAt.return_value = self._mock_screen(1.25)
+        mock_qapp.primaryScreen = MagicMock()
+        worker = QRWorker({"top": 0, "left": 0, "width": 1, "height": 1})
+        region = {"top": 0, "left": 1920, "width": 80, "height": 40}
+        result = worker._scale_region_to_physical(region)
+        self.assertEqual(result, {"top": 0, "left": 2400, "width": 100, "height": 50})
+        mock_qapp.primaryScreen.assert_not_called()
+
+    @patch("reader.core.qr_worker.QApplication")
+    def test_zero_width_raises_value_error(self, mock_qapp):
+        """Zero width raises ValueError."""
+        mock_qapp.screenAt.return_value = self._mock_screen(1.0)
+        worker = QRWorker({"top": 0, "left": 0, "width": 1, "height": 1})
+        with self.assertRaises(ValueError):
+            worker._scale_region_to_physical({"top": 0, "left": 0, "width": 0, "height": 10})
+
+    @patch("reader.core.qr_worker.QApplication")
+    def test_negative_height_raises_value_error(self, mock_qapp):
+        """Negative height raises ValueError."""
+        mock_qapp.screenAt.return_value = self._mock_screen(1.0)
+        worker = QRWorker({"top": 0, "left": 0, "width": 1, "height": 1})
+        with self.assertRaises(ValueError):
+            worker._scale_region_to_physical({"top": 0, "left": 0, "width": 10, "height": -5})
+
+
 if __name__ == "__main__":
     unittest.main()
