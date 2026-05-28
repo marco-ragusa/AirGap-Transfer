@@ -56,5 +56,5 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/):
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feat/my-feature`
 3. Commit your changes following the convention above
-4. Push and open a Pull Request against `main`
+4. Push and open a Pull Request against `master`
 5. Fill in the PR template
