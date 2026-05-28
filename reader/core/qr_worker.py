@@ -263,22 +263,13 @@ class QRWorker(QThread):
         self.stats_signal.emit(stats)
 
     def _finalize_transfer(self) -> None:
-        """Assemble received chunks and write output."""
-        full_content, missing_in_range = self._state_machine.buffer.assemble()
-        received = len(self._state_machine.buffer)
-        max_seq = self._state_machine.buffer.max_seq
-        total_announced = self._state_machine.total_chunks
+        """Assemble received chunks and write output.
 
-        if total_announced > 0:
-            expected_total = total_announced
-            leading = list(range(1, self._state_machine.buffer.min_seq))
-            trailing = list(range(max_seq + 1, total_announced + 1))
-            missing_indices = leading + missing_in_range + trailing
-        else:
-            expected_total = max_seq - self._state_machine.buffer.min_seq + 1
-            missing_indices = missing_in_range
-
-        success_rate = (received / expected_total * 100) if expected_total > 0 else 0
+        Thin orchestrator over small, independently testable steps.
+        """
+        full_content, missing_indices, received, expected_total, success_rate = (
+            self._compute_assembly()
+        )
 
         if not full_content:
             self.log_signal.emit("⚠️ No data received.")
@@ -296,7 +287,7 @@ class QRWorker(QThread):
             return
 
         try:
-            raw_bytes = base64.b64decode(full_content)
+            raw_bytes = self._decode_payload(full_content)
         except Exception as e:
             self.log_signal.emit(f"❌ Base64 decode failed: {e}")
             self.finished_signal.emit()
@@ -304,31 +295,78 @@ class QRWorker(QThread):
 
         if self._state_machine.is_compressed:
             try:
-                raw_bytes = zlib.decompress(raw_bytes)
+                raw_bytes = self._decompress(raw_bytes)
             except Exception as e:
                 self.log_signal.emit(f"❌ Decompression failed: {e}")
                 self.finished_signal.emit()
                 return
 
         try:
-            full_content = raw_bytes.decode('utf-8')
+            text = self._to_text(raw_bytes)
         except UnicodeDecodeError as e:
             self.log_signal.emit(f"❌ Decode failed (not UTF-8): {e}")
             self.finished_signal.emit()
             return
 
+        self._persist(text)
+
+        self.log_signal.emit(f"✨ DONE: {received}/{expected_total} chunks ({success_rate:.1f}%)")
+        self.finished_signal.emit()
+
+    def _compute_assembly(self) -> tuple[str, list[int], int, int, float]:
+        """Assemble the buffer and compute missing chunks and success rate.
+
+        Returns (full_content, missing_indices, received, expected_total,
+        success_rate).
+        """
+        buffer = self._state_machine.buffer
+        full_content, missing_in_range = buffer.assemble()
+        received = len(buffer)
+        max_seq = buffer.max_seq
+        total_announced = self._state_machine.total_chunks
+
+        if total_announced > 0:
+            expected_total = total_announced
+            leading = list(range(1, buffer.min_seq))
+            trailing = list(range(max_seq + 1, total_announced + 1))
+            missing_indices = leading + missing_in_range + trailing
+        else:
+            expected_total = max_seq - buffer.min_seq + 1
+            missing_indices = missing_in_range
+
+        success_rate = (received / expected_total * 100) if expected_total > 0 else 0.0
+        return full_content, missing_indices, received, expected_total, success_rate
+
+    @staticmethod
+    def _decode_payload(b64_text: str) -> bytes:
+        """Decode the assembled base64 payload to raw bytes."""
+        return base64.b64decode(b64_text)
+
+    @staticmethod
+    def _decompress(data: bytes) -> bytes:
+        """Inflate zlib-compressed bytes."""
+        return zlib.decompress(data)
+
+    @staticmethod
+    def _to_text(data: bytes) -> str:
+        """Decode raw bytes as UTF-8 text."""
+        return data.decode('utf-8')
+
+    def _persist(self, text: str) -> None:
+        """Write the text to the log file and copy it to the clipboard.
+
+        File-write and clipboard failures are logged but non-fatal: neither
+        aborts the other, matching the previous inline behavior.
+        """
         try:
             with open(LOG_FILE, "w", encoding="utf-8") as f:
-                f.write(full_content)
+                f.write(text)
             self.log_signal.emit(f"📄 Saved to: {LOG_FILE}")
         except OSError as e:
             self.log_signal.emit(f"❌ File write error: {e}")
 
         try:
-            pyperclip.copy(full_content)
+            pyperclip.copy(text)
             self.log_signal.emit("📋 Copied to Clipboard!")
         except Exception as e:
             self.log_signal.emit(f"⚠️ Clipboard failed: {e}")
-
-        self.log_signal.emit(f"✨ DONE: {received}/{expected_total} chunks ({success_rate:.1f}%)")
-        self.finished_signal.emit()
