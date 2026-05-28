@@ -40,7 +40,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("QR Reader")
+        self.setWindowTitle("AirGap Transfer - Reader")
         self.resize(420, 560)
         self._setup_ui()
         self._apply_theme()
