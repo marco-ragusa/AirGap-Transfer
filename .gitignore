@@ -1,0 +1,26 @@
+# Python (Recursive)
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+
+# Virtual Environments
+**/venv/
+
+# Dist files
+dist/
+build/
+
+# Tooling & IDE
+.pytest_cache/
+.vscode/
+.idea/
+
+# Application Logs & Output
+**/qr_received.txt
+
+# OS Generated
+Thumbs.db
+Desktop.ini
+
+# Internal planning/design docs
+docs/
