@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AirGap Transfer - Sender</title>
-    <script src="qrcode.min.js"></script>
+    <script src="qrcode-generator.min.js"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -139,10 +139,10 @@
         #qrcode {
             display: none;
             background: #fff;
-            padding: 24px;
             border-radius: 6px;
+            width: 100%;
         }
-        #qrcode img, #qrcode canvas { display: block; }
+        #qrcode canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
 
         .progress {
             width: 100%;
@@ -287,11 +287,31 @@
         function generateQR(text) {
             ui.qrContainer.innerHTML = '';
             try {
-                new QRCode(ui.qrContainer, {
-                    text, width: 420, height: 420,
-                    colorDark: '#000', colorLight: '#fff',
-                    correctLevel: QRCode.CorrectLevel.M
-                });
+                const qr = qrcode(0, 'M');      // 0 = smallest version that fits; 'M' error correction
+                qr.addData(text);
+                qr.make();
+
+                const count  = qr.getModuleCount();
+                const margin = 4;               // quiet zone in modules (required for reliable decoding)
+                const total  = count + margin * 2;
+                const cell   = 8;               // backing-store cell px; CSS scales the canvas to fill the stage
+                const size   = total * cell;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, size, size);
+                ctx.fillStyle = '#000';
+                for (let r = 0; r < count; r++) {
+                    for (let c = 0; c < count; c++) {
+                        if (qr.isDark(r, c)) {
+                            ctx.fillRect((c + margin) * cell, (r + margin) * cell, cell, cell);
+                        }
+                    }
+                }
+                ui.qrContainer.appendChild(canvas);
             } catch {
                 ui.status.textContent = '❌ QR failed - reduce chunk size';
                 stopTransmission(false);
