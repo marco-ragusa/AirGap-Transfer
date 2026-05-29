@@ -191,7 +191,7 @@
             </div>
             <div class="field">
                 <label for="displayTime">Speed ms</label>
-                <input type="number" id="displayTime" value="500" min="100" max="5000" step="50">
+                <input type="number" id="displayTime" value="500" min="50" max="5000" step="50">
             </div>
             <label class="check-field">
                 <input type="checkbox" id="compressEnabled">
@@ -317,7 +317,7 @@
             }
 
             const chunkSize = parseInt(ui.settings.chunk.value) || 200;
-            const speed     = parseInt(ui.settings.speed.value) || 500;
+            const speed     = Math.max(50, parseInt(ui.settings.speed.value) || 500);
             const allChunks = splitIntoChunks(text, chunkSize);
             const totalChunks = allChunks.length;
             const queue = allChunks.map((chunk, i) => ({ chunk, seqNum: i + 1 }));
