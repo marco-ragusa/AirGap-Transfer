@@ -285,7 +285,6 @@
         }
 
         function generateQR(text) {
-            ui.qrContainer.innerHTML = '';
             try {
                 const qr = qrcode(0, 'M');      // 0 = smallest version that fits; 'M' error correction
                 qr.addData(text);
@@ -297,9 +296,22 @@
                 const cell   = 8;               // backing-store cell px; CSS scales the canvas to fill the stage
                 const size   = total * cell;
 
-                const canvas = document.createElement('canvas');
-                canvas.width = size;
-                canvas.height = size;
+                // Reuse one canvas across frames: no per-frame DOM churn
+                // (no innerHTML/createElement/appendChild), just redraw the
+                // backing store. The QR encode is ~8ms; the old DOM mutation
+                // dominated at ~85ms/frame.
+                let canvas = state.qrCanvas;
+                if (!canvas) {
+                    canvas = document.createElement('canvas');
+                    state.qrCanvas = canvas;
+                    ui.qrContainer.innerHTML = '';
+                    ui.qrContainer.appendChild(canvas);
+                }
+                if (canvas.width !== size) {    // QR version changed -> resize (also clears)
+                    canvas.width = size;
+                    canvas.height = size;
+                }
+
                 const ctx = canvas.getContext('2d');
                 ctx.fillStyle = '#fff';
                 ctx.fillRect(0, 0, size, size);
@@ -311,7 +323,6 @@
                         }
                     }
                 }
-                ui.qrContainer.appendChild(canvas);
             } catch {
                 ui.status.textContent = '❌ QR failed - reduce chunk size';
                 stopTransmission(false);
